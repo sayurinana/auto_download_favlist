@@ -1,0 +1,34 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #1A73E8
+skinparam ActivityBackgroundColor #F5F7FA
+skinparam ActivityBorderColor #1A73E8
+skinparam DecisionBackgroundColor #FFF4CC
+skinparam DecisionBorderColor #FFB300
+
+start
+:解析CLI参数 (URL/输出路径/编码/page_size/cookie/timeout);
+:验证URL并提取media_id;
+if (提取成功?) then (是)
+    :构建Tokio运行时并调用favlist_core导出流程;
+    if (导出成功?) then (是)
+        if (是否写入新条目?) then (是)
+            :打印新增条目数量和文件路径;
+            :退出码0;
+        else (否)
+            :提示无新增条目;
+            :退出码0;
+        endif
+        stop
+    else (否)
+        :输出错误上下文 (参数/API/文件/编码);
+        :退出码1;
+        stop
+    endif
+else (否)
+    :输出URL格式错误并退出码2;
+    stop
+endif
+@enduml

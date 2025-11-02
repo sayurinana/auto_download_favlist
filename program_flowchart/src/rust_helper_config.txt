@@ -1,0 +1,40 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #1A73E8
+skinparam ActivityBackgroundColor #F5F7FA
+skinparam ActivityBorderColor #1A73E8
+skinparam DecisionBackgroundColor #FFF4CC
+skinparam DecisionBorderColor #FFB300
+
+start
+:接收已选择的收藏夹配置;
+while (未选择返回?) is (是)
+    :渲染子菜单 [编辑/检查更新/检查缺漏/返回];
+    if (编辑配置?) then (是)
+        :逐项修改下载目录/URL/编码/Cookie等字段;
+        :保存更新后的配置;
+    else (否)
+        if (检查更新?) then (是)
+            :备份旧CSV;
+            :调用favlist_core导出最新CSV;
+            :比较新增条目，并按dry-run配置调用bbdown;
+            :更新配置中的CSV路径与同步时间;
+        else (否)
+            if (检查缺漏?) then (是)
+                :扫描下载目录获取已有BV集合;
+                :读取CSV并找缺失条目;
+                :按dry-run配置调用bbdown处理缺失项;
+            else (否)
+                if (返回上层?) then (是)
+                    :记录返回指令;
+                else (否)
+                    :提示无效输入;
+                endif
+            endif
+        endif
+    endif
+endwhile (否)
+stop
+@enduml

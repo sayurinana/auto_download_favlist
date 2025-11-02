@@ -1,0 +1,44 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #1A73E8
+skinparam ActivityBackgroundColor #F5F7FA
+skinparam ActivityBorderColor #1A73E8
+skinparam DecisionBackgroundColor #FFF4CC
+skinparam DecisionBorderColor #FFB300
+
+start
+:加载配置仓库 (XDG/APPDATA);
+:初始化终端界面 (捕获方向键/WASD/Enter/Space/ESC);
+while (未确认退出?) is (是)
+    :渲染主菜单 [录入新收藏夹 / 使用存档配置 / 退出];
+    if (选择录入?) then (是)
+        :提示URL与下载目录;
+        :调用favlist_core导出→写入新CSV;
+        if (导出成功?) then (是)
+            :保存配置并提示成功;
+        else (否)
+            :提示错误并保留原状态;
+        endif
+    else (否)
+        if (选择存档配置?) then (是)
+            :加载配置列表;
+            if (存在可用配置并成功选择?) then (是)
+                :执行存档子流程 (见配置菜单图);
+            else (否)
+                :提示无配置或操作取消;
+            endif
+        else (否)
+            if (选择退出?) then (是)
+                :记录退出指令;
+            else (否)
+                :提示无效输入;
+            endif
+        endif
+    endif
+endwhile (否)
+:恢复终端模式;
+:输出退出提示;
+stop
+@enduml
