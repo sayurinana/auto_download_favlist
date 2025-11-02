@@ -51,24 +51,14 @@ def test_cli_export_and_deduplicate(tmp_path: Path) -> None:
         INFO_ENDPOINT,
         json=mock_folder_response(media_id),
         status=200,
+        repeat=2,
     )
     responses.add(
         responses.GET,
         LIST_ENDPOINT,
         json=mock_list_response(media_id, "BV123"),
         status=200,
-    )
-    responses.add(
-        responses.GET,
-        INFO_ENDPOINT,
-        json=mock_folder_response(media_id),
-        status=200,
-    )
-    responses.add(
-        responses.GET,
-        LIST_ENDPOINT,
-        json=mock_list_response(media_id, "BV123"),
-        status=200,
+        repeat=2,
     )
 
     original_ts = cli_module.current_timestamp
@@ -80,6 +70,7 @@ def test_cli_export_and_deduplicate(tmp_path: Path) -> None:
         result = runner.invoke(
             app,
             [
+                "export",
                 f"https://space.bilibili.com/234561771/favlist?fid={media_id}",
                 "--output",
                 str(output_csv),
@@ -97,6 +88,7 @@ def test_cli_export_and_deduplicate(tmp_path: Path) -> None:
         result_second = runner.invoke(
             app,
             [
+                "export",
                 f"https://space.bilibili.com/234561771/favlist?fid={media_id}",
                 "--output",
                 str(output_csv),
