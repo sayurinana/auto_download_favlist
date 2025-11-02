@@ -44,3 +44,4 @@
 
 ## 验证结果
 - 2025-11-02T18:58:20+08:00 执行 `pytest` 全量用例，11 项全部通过，覆盖配置仓库、导出服务、BV 扫描逻辑及原有 CLI。
+- 2025-11-02T19:18:44+08:00 使用 `PYTHONPATH=src uv run python -m bilibili_favlist_download_helper --dry-run` 验证主流程可启动、无 TypeError；同一时刻以 `uv run pytest` 再次确认用例通过。

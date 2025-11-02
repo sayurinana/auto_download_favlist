@@ -298,4 +298,4 @@ def run(
 
 
 def main() -> None:
-    run()
+    app()
