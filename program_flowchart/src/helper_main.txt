@@ -1,0 +1,63 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #1A73E8
+skinparam ActivityBackgroundColor #F5F7FA
+skinparam ActivityBorderColor #1A73E8
+skinparam DecisionBackgroundColor #FFF4CC
+skinparam DecisionBorderColor #FFB300
+
+start
+:解析CLI选项 (--dry-run 等);
+:加载配置仓库 (config.json);
+repeat
+    :显示主菜单 [录入/存档/退出];
+    if (选择录入新收藏夹?) then (是)
+        :提示输入收藏夹URL;
+        :提示输入下载目录;
+        :生成时间戳CSV文件名;
+        :调用导出服务抓取收藏夹;
+        if (抓取成功?) then (是)
+            :写入CSV并更新配置;
+            :提示下一步操作;
+        else (否)
+            :输出错误信息并保留原配置;
+        endif
+    elseif (选择使用存档?) then (是)
+        if (存在配置条目?) then (是)
+            :列出配置并选择;
+            :显示操作菜单 [编辑/检查更新/检查缺漏/返回];
+            if (编辑配置?) then (是)
+                :逐项提示新值 (回车保留);
+                :保存配置并提示完成;
+            elseif (检查更新?) then (是)
+                :备份旧CSV为 .backup.csv;
+                :调用导出服务获取新CSV;
+                :比对新增BV条目;
+                if (存在新增?) then (是)
+                    :遍历新增并调用/打印 bbdown;
+                else (否)
+                    :提示无新增内容;
+                endif
+            elseif (检查缺漏?) then (是)
+                :扫描下载目录文件名提取BV集合;
+                :读取CSV bv_id 列并找出缺失;
+                if (存在缺失?) then (是)
+                    :遍历缺失并调用/打印 bbdown;
+                else (否)
+                    :提示无缺漏;
+                endif
+            else (返回)
+                :返回主菜单;
+            endif
+        else (否)
+            :提示尚未录入配置;
+        endif
+    else (退出)
+        break
+    endif
+repeat while (继续操作?)
+:保存所有配置变更;
+stop
+@enduml
