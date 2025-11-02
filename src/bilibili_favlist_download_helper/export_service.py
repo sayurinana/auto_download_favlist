@@ -34,6 +34,7 @@ def export_to_csv(
     page_size: int = 40,
     cookie: Optional[str] = None,
     timeout: float = 10.0,
+    timestamp: Optional[str] = None,
 ) -> ExportResult:
     """导出指定收藏夹到 CSV。"""
     try:
@@ -55,7 +56,7 @@ def export_to_csv(
         raise ExportError(f"抓取收藏夹条目失败: {exc}") from exc
 
     existing_ids = load_existing_bv_ids(csv_path, encoding)
-    timestamp = current_timestamp()
+    ts = timestamp or current_timestamp()
     new_entries: list[VideoEntry] = []
     for item in medias:
         bv_id = (item.get("bv_id") or item.get("bvid") or "").strip()
@@ -74,7 +75,7 @@ def export_to_csv(
                 bv_id=bv_id,
                 title=title,
                 fav_title=folder_info.title,
-                timestamp=timestamp,
+                timestamp=ts,
                 aid=item.get("id"),
             )
         )
@@ -89,4 +90,4 @@ def export_to_csv(
                 writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
                 writer.writeheader()
 
-    return ExportResult(csv_path=csv_path, folder_info=folder_info, new_entries=new_entries, timestamp=timestamp)
+    return ExportResult(csv_path=csv_path, folder_info=folder_info, new_entries=new_entries, timestamp=ts)
