@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/favlist_core",
+    "crates/get_bilibili_favlist_bvid_list",
+    "crates/bilibili_favlist_download_helper",
+]
+resolver = "2"
