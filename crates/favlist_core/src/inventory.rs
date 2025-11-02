@@ -70,10 +70,7 @@ fn extract_bvid_from_row(row: &CsvRow) -> Option<String> {
 }
 
 pub fn diff_new_entries(old_rows: &[CsvRow], new_rows: &[CsvRow]) -> Vec<CsvRow> {
-    let old_set: HashSet<String> = old_rows
-        .iter()
-        .filter_map(|row| extract_bvid_from_row(row))
-        .collect();
+    let old_set: HashSet<String> = old_rows.iter().filter_map(extract_bvid_from_row).collect();
     new_rows
         .iter()
         .filter(|row| {

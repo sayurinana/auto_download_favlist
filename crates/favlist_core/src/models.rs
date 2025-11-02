@@ -74,10 +74,8 @@ impl VideoItem {
             Some(self.bv_id.trim().to_string())
         } else if !self.bvid.trim().is_empty() {
             Some(self.bvid.trim().to_string())
-        } else if let Some(aid) = self.id {
-            Some(format!("av{aid}"))
         } else {
-            None
+            self.id.map(|aid| format!("av{aid}"))
         }
     }
 }

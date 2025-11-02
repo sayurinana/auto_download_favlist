@@ -26,7 +26,7 @@
 4. **交互式助手实现**：
    - 编写配置存储（XDG/Windows 目录）与模型序列化（JSON）。
    - 导入 `favlist_core` 功能执行导出、差异比较、缺漏检测（需要目录扫描、bbdown 命令包装）。
-   - 基于 `crossterm`/`ratatui` 实现菜单状态机，仅接受方向键/WASD 与 Enter/Space/ESC。
+   - 基于 `crossterm` 实现菜单状态机，仅接受方向键/WASD 与 Enter/Space/ESC。
    - 提供“录入新收藏夹”“使用存档配置→编辑/检查更新/检查缺漏”等流程，dry-run 模式下仅打印命令。
 5. **测试与验证**：
    - 使用 mock HTTP（`httpmock` 或 `wiremock-rs`）验证分页与错误处理。
@@ -43,6 +43,11 @@
 - `bilibili_favlist_download_helper` 菜单交互仅响应方向键/WASD + Enter/Space/ESC，dry-run 模式打印 `bbdown` 命令；真实模式可检测命令缺失并提示。
 - 配置文件、CSV、备份与目录清单生成位置与 Python 版一致或在文档中说明差异。
 - PlantUML PNG 与文档同步，`CHANGELOG.md` 新增版本段落并保留 `[Unreleased]`。
+
+## 执行结果摘要
+- `favlist_core` 以 `httpmock` 模拟接口，覆盖收藏夹导出、CSV 编码与目录盘点等关键路径，测试记录见 `crates/favlist_core/tests/core_tests.rs`。
+- `cargo fmt`、`cargo clippy --all-targets --all-features -D warnings`、`cargo test` 全量通过，并在 `AI-AGENT_working-status.csv` 留存时间戳。
+- `bilibili_favlist_download_helper` 通过 `crossterm` 菜单仅响应方向键/WASD + Enter/Space/Esc，`--dry-run` 输出 `bbdown` 命令并成功写入/更新 `~/.config/bilibili_favlist_helper/config.json`。
 
 ## 关键风险与应对
 - **B站接口变动/限流**：在核心 crate 中统一封装错误并提供重试/间隔配置，文档提示用户准备 Cookie。

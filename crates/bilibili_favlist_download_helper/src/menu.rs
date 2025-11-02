@@ -22,8 +22,8 @@ pub fn select_from_menu(title: &str, options: &[String]) -> Result<MenuOutcome> 
 
     loop {
         redraw(&mut stdout, title, options, index)?;
-        match read()? {
-            Event::Key(key) => match normalize_key(key) {
+        if let Event::Key(key) = read()? {
+            match normalize_key(key) {
                 Some(NormalizedKey::Up) => {
                     if index == 0 {
                         index = options.len() - 1;
@@ -43,8 +43,7 @@ pub fn select_from_menu(title: &str, options: &[String]) -> Result<MenuOutcome> 
                     return Ok(MenuOutcome::Esc);
                 }
                 None => {}
-            },
-            _ => {}
+            }
         }
     }
 }
