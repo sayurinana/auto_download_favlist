@@ -48,6 +48,7 @@ fn main() -> Result<()> {
         timeout_secs: cli.timeout,
         timestamp: None,
         extra_headers: Default::default(),
+        base_url: None,
     };
 
     let result = export_favlist_blocking(options).with_context(|| "导出收藏夹失败")?;

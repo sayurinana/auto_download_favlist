@@ -9,3 +9,4 @@ timestamp,stage,action,notes
 2025-11-02T20:07:31+08:00,流程设计,流程图生成,"编写PlantUML并生成rust_fav_export、rust_helper_main、rust_helper_config PNG"
 2025-11-02T20:08:16+08:00,任务主体流程循环,进入环节,"开始依据设计实现Rust工作区与核心模块"
 2025-11-02T20:15:54+08:00,任务主体流程循环,基础搭建,"创建Cargo workspace与favlist_core骨架，迁移收藏夹导出核心逻辑"
+2025-11-02T20:48:09+08:00,任务主体流程循环,核心验证,"完成favlist_core单元测试与mock集成测试，确认导出逻辑正确"

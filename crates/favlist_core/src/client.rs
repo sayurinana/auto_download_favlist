@@ -10,8 +10,9 @@ use serde::de::DeserializeOwned;
 use crate::errors::FavlistError;
 use crate::models::{ApiResponse, FolderInfo, FolderInfoPayload, ResourceListPayload};
 
-pub const INFO_ENDPOINT: &str = "https://api.bilibili.com/x/v3/fav/folder/info";
-pub const LIST_ENDPOINT: &str = "https://api.bilibili.com/x/v3/fav/resource/list";
+const DEFAULT_BASE_URL: &str = "https://api.bilibili.com";
+const INFO_PATH: &str = "/x/v3/fav/folder/info";
+const LIST_PATH: &str = "/x/v3/fav/resource/list";
 
 pub const DEFAULT_HEADERS: [(&str, &str); 2] = [
     (
@@ -26,6 +27,7 @@ pub struct ClientOptions {
     pub timeout: Duration,
     pub cookie: Option<String>,
     pub extra_headers: HashMap<String, String>,
+    pub base_url: Option<String>,
 }
 
 impl Default for ClientOptions {
@@ -34,6 +36,7 @@ impl Default for ClientOptions {
             timeout: Duration::from_secs(10),
             cookie: None,
             extra_headers: HashMap::new(),
+            base_url: None,
         }
     }
 }
@@ -42,6 +45,7 @@ impl Default for ClientOptions {
 pub struct BiliFavClient {
     client: Client,
     options: ClientOptions,
+    base_url: String,
 }
 
 impl BiliFavClient {
@@ -74,12 +78,24 @@ impl BiliFavClient {
             .build()
             .map_err(FavlistError::Request)?;
 
-        Ok(Self { client, options })
+        let base_url = options
+            .base_url
+            .clone()
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+
+        Ok(Self {
+            client,
+            options,
+            base_url,
+        })
     }
 
     pub async fn get_folder_info(&self, media_id: i64) -> Result<FolderInfo, FavlistError> {
         let payload: FolderInfoPayload = self
-            .request(INFO_ENDPOINT, &[("media_id", media_id.to_string())])
+            .request(
+                &format!("{}{}", self.base_url, INFO_PATH),
+                &[("media_id", media_id.to_string())],
+            )
             .await?;
         Ok(payload.into_folder_info(media_id))
     }
@@ -94,7 +110,7 @@ impl BiliFavClient {
         loop {
             let payload: ResourceListPayload = self
                 .request(
-                    LIST_ENDPOINT,
+                    &format!("{}{}", self.base_url, LIST_PATH),
                     &[
                         ("media_id", media_id.to_string()),
                         ("pn", page.to_string()),

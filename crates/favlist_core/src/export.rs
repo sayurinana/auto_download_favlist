@@ -20,6 +20,7 @@ pub struct ExportOptions {
     pub timeout_secs: u64,
     pub timestamp: Option<String>,
     pub extra_headers: HashMap<String, String>,
+    pub base_url: Option<String>,
 }
 
 impl Default for ExportOptions {
@@ -33,6 +34,7 @@ impl Default for ExportOptions {
             timeout_secs: 10,
             timestamp: None,
             extra_headers: HashMap::new(),
+            base_url: None,
         }
     }
 }
@@ -55,6 +57,7 @@ pub async fn export_favlist(mut options: ExportOptions) -> Result<ExportResult, 
         timeout: Duration::from_secs(options.timeout_secs),
         cookie: options.cookie.clone(),
         extra_headers: options.extra_headers.clone(),
+        base_url: options.base_url.clone(),
     };
     let client = BiliFavClient::new(client_options)?;
 
