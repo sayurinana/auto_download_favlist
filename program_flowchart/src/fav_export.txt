@@ -1,0 +1,49 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #1A73E8
+skinparam ActivityBackgroundColor #F5F7FA
+skinparam ActivityBorderColor #1A73E8
+skinparam DecisionBackgroundColor #FFF4CC
+skinparam DecisionBorderColor #FFB300
+
+start
+:解析CLI参数 (收藏夹URL, 输出路径, 编码, Cookie);
+:从URL提取media_id/fid;
+if (提取成功?) then (是)
+    :调用收藏夹信息API;
+    if (API返回成功?) then (是)
+        :初始化页码=1, 累计列表;
+        repeat
+            :请求资源列表 (page=页码);
+            if (返回成功?) then (是)
+                :追加新条目;
+                if (是否还有更多页?) then (是)
+                    :页码+1;
+                else (否)
+                    break
+                endif
+            else (否)
+                :记录错误并退出;
+                stop
+            endif
+        repeat while (仍有数据)
+        :读取既有CSV, 构建已存在BV集合;
+        :过滤重复条目;
+        if (有新条目?) then (是)
+            :按时间戳写入CSV;
+        else (否)
+            :输出无新增信息;
+        endif
+        :打印汇总信息, 返回0;
+        stop
+    else (否)
+        :输出API错误信息;
+        stop
+    endif
+else (否)
+    :提示URL格式无效;
+    stop
+endif
+@enduml
