@@ -86,7 +86,7 @@ def export_to_csv(
         # 如果没有新条目且文件不存在，仍需创建带表头的 CSV
         if not csv_path.exists():
             csv_path.parent.mkdir(parents=True, exist_ok=True)
-            with csv_path.open(\"w\", encoding=encoding, newline=\"\") as fh:
+            with csv_path.open("w", encoding=encoding, newline="") as fh:
                 writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
                 writer.writeheader()
 
