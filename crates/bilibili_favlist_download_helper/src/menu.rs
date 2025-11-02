@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::{poll, read, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{self, ClearType};
 use crossterm::{execute, QueueableCommand};
 
@@ -85,6 +85,12 @@ enum NormalizedKey {
 }
 
 fn normalize_key(key: KeyEvent) -> Option<NormalizedKey> {
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    if key.modifiers != KeyModifiers::NONE {
+        return None;
+    }
     match key.code {
         KeyCode::Up | KeyCode::Left => Some(NormalizedKey::Up),
         KeyCode::Down | KeyCode::Right => Some(NormalizedKey::Down),
@@ -99,7 +105,6 @@ fn normalize_key(key: KeyEvent) -> Option<NormalizedKey> {
         },
         _ => None,
     }
-    .filter(|_| key.modifiers == KeyModifiers::NONE)
 }
 
 fn clear_pending_events() -> Result<()> {
