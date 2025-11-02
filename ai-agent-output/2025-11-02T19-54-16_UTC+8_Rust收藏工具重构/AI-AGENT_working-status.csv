@@ -15,3 +15,4 @@ timestamp,stage,action,notes
 2025-11-02T21:18:31+08:00,验证结果,静态检查,"执行 cargo clippy --all-targets --all-features -D warnings，确认无警告"
 2025-11-02T21:21:40+08:00,文档更新,说明同步,"更新 CHANGELOG、README 与 Windows 指引，补充优化任务执行结果"
 2025-11-02T21:22:59+08:00,收尾,状态核对,"重置 now-task.md，确认仓库 clean 并准备交付总结"
+2025-11-02T21:52:07+08:00,任务主体流程循环,缺陷修复,"修正菜单返回后残留Enter导致重复进入录入流程，新增事件清空逻辑"

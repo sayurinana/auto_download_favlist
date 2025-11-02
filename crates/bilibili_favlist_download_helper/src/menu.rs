@@ -1,8 +1,9 @@
 use std::io::{stdout, Write};
+use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{poll, read, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::terminal::{self, ClearType};
 use crossterm::{execute, QueueableCommand};
 
@@ -18,6 +19,7 @@ pub fn select_from_menu(title: &str, options: &[String]) -> Result<MenuOutcome> 
     terminal::enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, Hide)?;
+    clear_pending_events()?;
     let mut index = 0usize;
 
     loop {
@@ -98,4 +100,11 @@ fn normalize_key(key: KeyEvent) -> Option<NormalizedKey> {
         _ => None,
     }
     .filter(|_| key.modifiers == KeyModifiers::NONE)
+}
+
+fn clear_pending_events() -> Result<()> {
+    while poll(Duration::from_millis(0))? {
+        let _ = read()?;
+    }
+    Ok(())
 }
