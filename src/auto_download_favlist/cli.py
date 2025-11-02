@@ -18,7 +18,7 @@ app = typer.Typer(help="导出B站收藏夹视频列表到CSV")
 def export_command(
     fav_url: str = typer.Argument(..., help="B站收藏夹页面URL"),
     output: Path = typer.Option(Path("favlist.csv"), "--output", "-o", help="输出CSV路径"),
-    encoding: str = typer.Option("gbk", "--encoding", "-e", help="输出文件编码"),
+    encoding: str = typer.Option("utf-8", "--encoding", "-e", help="输出文件编码"),
     page_size: int = typer.Option(40, "--page-size", help="单次请求条目数，默认40"),
     cookie: Optional[str] = typer.Option(None, "--cookie", help="必要时附加的Cookie"),
     timeout: float = typer.Option(10.0, "--timeout", help="请求超时时间(秒)"),
