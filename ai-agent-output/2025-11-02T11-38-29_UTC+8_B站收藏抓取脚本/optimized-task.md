@@ -35,8 +35,13 @@
 - 流程图与文档与实现一致，可指导Windows端用户部署运行。
 - 代码通过自建测试并提供运行日志/截图证明。
 
+## 执行与验证纪要
+- 2025-11-02 在uv虚拟环境中运行`pytest`，通过`tests/test_cli.py`、`tests/test_csv_writer.py`、`tests/test_utils.py`共5项用例。
+- 同日使用`PYTHONPATH=src uv run python -m auto_download_favlist.cli`对示例收藏夹抓取，生成`output/favlist.csv`共109条新纪录，确认分页与去重逻辑有效。
+- `requirements.txt`固定`click>=8.1,<8.2`防止Typer兼容性问题；后续在Windows上沿用`uv pip install -r requirements.txt`即可复现环境。
+
 ## 关键约束与说明
 - 依据用户指示“无需与用户沟通确认”，所有待定项已由代理自决并记录在`undetermined.md`。
 - 必须遵循`AI-AGENT_criterion.md`的六环节流程与提交规范，所有状态变更同步进CSV并即时提交。
-- 如需外部依赖，优先使用`venv`+`pip`，确保Windows兼容（避免Linux特有命令）。
+- 推荐通过`uv venv`创建虚拟环境，确保跨平台一致性；如需外部依赖，保证Windows兼容。
 - 若B站API需认证信息，需在文档中说明如何获取并传入（同时避免泄露敏感数据）。
