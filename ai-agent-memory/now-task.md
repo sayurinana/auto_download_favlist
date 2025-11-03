@@ -14,5 +14,17 @@
   - 把所有的下载任务添加完后，每500毫秒（此时间可通过配置指定，默认为此值）获取一次任务状态，在当前运行的任务为空时即为下载完成，关闭刚刚启动的bbdown进程（dry-run则无动作），向用户报告，然后再次检查缺漏项，但此次仅检查而不再次调用api，然后向用户报告检查结果，
   - 完成
 
-  
 
+
+
+# 新增要求
+
+当前使用的bbdown配置文件如`bbdown.config`文件中所示，
+
+如果使用API调用则和直接调用bbdown有所不同，其他不需要改变的配置可以由bbdown从配置文件中读取，但下载目录需要根据选择的配置项来动态指定，而API不能直接通过指定work-dir参数来指定下载目录，
+
+需要传输完整的`FilePattern`字段，
+
+我希望可以在bilibili_favlist_download_helper的配置中支持单独设置保存file-pattern和multi-file-pattern，仅在调用API时将选用的配置项中的文件路径和匹配模式拼接起来，
+
+例如对于file-pattern `<videoTitle>-[<dfn>][<res>][<fps>fps][<videoCodecs>][<videoBandwidth>kbps]-[<audioCodecs>][<audioBandwidth>kbps]-[<bvid>]-by[<ownerName>][<ownerMid>][<publishDate>]`和 存储路径`D:\download-buffer\BBDown\all`，得到的`FilePattern`字段值就是`D:\\download-buffer\\BBDown\\all\\<videoTitle>-[<dfn>][<res>][<fps>fps][<videoCodecs>][<videoBandwidth>kbps]-[<audioCodecs>][<audioBandwidth>kbps]-[<bvid>]-by[<ownerName>][<ownerMid>][<publishDate>]`
