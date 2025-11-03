@@ -59,3 +59,16 @@
 - ✅ **优势**（+55分）：API client封装减少主流程复杂度。
 - ✅ **优势**（+20分）：Dry-run可在无BBDown环境下验证逻辑。
 - ❌ **风险**（-5分）：轮询阻塞UI时间，需配合提示文本缓解等待感。
+## 🔍 待定项U005 - FilePattern与多文件模式配置策略
+
+### ✅ 方案S001 - 【建议采纳 +80分】
+**📍 原文位置**：（ai-agent-memory/now-task.md，第26-31行）
+> 需要在配置中支持单独设置保存file-pattern和multi-file-pattern，仅在调用API时按配置拼接路径与模式。
+
+**🎯 优化方案**：
+> 扩展`FavConfig`新增`file_pattern`与`multi_file_pattern`字段，并保留原有下载目录；在调用BBDown API时，将下载目录路径与所选Pattern拼接为`FilePattern`字段（转义反斜杠），若存在multi-pattern则提供给`MultiFilePattern`；否则沿用bbdown.config默认配置。配置编辑界面允许用户维护两个新字段，对应dry-run时仅打印最终拼接结果。
+
+**⚖️ 权衡分析**：
+- ✅ **优势**（+60分）：满足API模式字段需求，与现有配置持久化结合良好。
+- ✅ **优势**（+25分）：保持与bbdown.config共存，只在API调用路径上动态覆盖。
+- ❌ **风险**（-5分）：Windows/Linux路径差异需注意转义处理，需补充测试。
