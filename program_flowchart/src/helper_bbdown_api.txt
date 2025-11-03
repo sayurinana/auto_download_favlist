@@ -1,0 +1,48 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+start
+:扫描下载目录并写库存档;
+:读取CSV并找出缺漏列表;
+if (缺漏为空?) then (是)
+  :提示无缺失;
+  stop
+else (否)
+  if (dry-run?) then (是)
+    :打印计划提交的FilePattern与URL;
+  else (否)
+    if (bbdown_auto_launch?) then (是)
+      :启动BBDown serve子进程;
+    else (否)
+      :提示使用配置的服务地址;
+    endif
+    :遍历缺漏列表调用/add-task;
+  endif
+  :pending = true;
+  repeat
+    if (dry-run?) then (是)
+      :sleep(poll_interval);
+      :pending = false;
+    else (否)
+      :查询/get-tasks/running;
+      if (返回空?) then (是)
+        :pending = false;
+      else (否)
+        :sleep(poll_interval);
+      endif
+    endif
+  repeat while (pending == true)
+  if (dry-run?) then (是)
+    :说明未执行下载;
+  else (否)
+    :调用/remove-finished;
+    if (自动启动?) then (是)
+      :关闭BBDown serve子进程;
+    endif
+  endif
+  :再次扫描目录并输出缺漏结果;
+  stop
+endif
+@enduml

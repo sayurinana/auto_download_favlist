@@ -1,0 +1,34 @@
+@startuml
+skinparam defaultFontName "PingFang SC"
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+start
+:读取配置 ExportOptions;
+:创建BiliFavClient;
+:请求收藏夹信息;
+if (返回媒体总数?) then (是)
+  :记录total = media_count;
+else (否)
+  :记录total = unknown;
+endif
+:current = 0;
+repeat
+  :请求下一页资源列表;
+  if (API调用结果?) then (成功)
+    :遍历视频项;
+    if (新条目?) then (是)
+      :写入CSV;
+      :current = current + 1;
+      :触发进度回调(current,total);
+    else (否)
+      :跳过;
+    endif
+  else (失败)
+    :抛出错误，终止流程;
+    stop
+  endif
+repeat while (has_more? == 是)
+:若无新增条目则确保CSV存在;
+stop
+@enduml
