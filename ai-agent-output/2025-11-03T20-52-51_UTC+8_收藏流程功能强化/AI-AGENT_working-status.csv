@@ -8,3 +8,4 @@ timestamp,stage,action,notes
 2025-11-03T21:12:00+08:00,流程设计,方案推演,"调用Sequential-Thinking确定核心库→CLI→助手配置→BBDown API→测试文档的执行顺序"
 2025-11-03T21:13:08+08:00,流程设计,文档输出,"完成flow-design.md与模块拆解，准备绘制流程图"
 2025-11-03T21:14:35+08:00,流程设计,流程图生成,"编写core_export_progress与helper_bbdown_api PlantUML并生成PNG"
+2025-11-03T21:15:22+08:00,任务主体流程循环,进入环节,"开始按照设计修改核心库与各二进制crate"
