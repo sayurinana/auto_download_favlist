@@ -66,5 +66,10 @@
 - **配置迁移兼容性**：为缺失字段设置默认值，并在存储时自动写回；提供测试覆盖旧配置 JSON。
 - **路径转义差异**：针对 Windows 反斜杠使用 `replace("\\", "\\\\")` 统一处理，测试验证示例路径。
 
+## 验证结果
+- `cargo fmt`, `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings` 全量通过，含新增 `export_progress_reports_updates` 用例。
+- CLI 抓取进度条显示“已获取/总数”，dry-run 模式输出拟提交任务与 FilePattern；正常模式下可轮询 BBDown API 直至任务列表为空。
+- 配置存储加载旧 JSON 时自动填充 serve 配置，编辑界面可维护 FilePattern、轮询间隔等新增字段。
+
 ## 备注
 - 用户已声明无需逐项确认待定项，本任务按既定方案自主推进；如需返工，将在状态记录中说明原因与回退环节。
