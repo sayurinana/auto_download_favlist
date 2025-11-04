@@ -5,15 +5,11 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use console::style;
-use indicatif::{ProgressBar, ProgressStyle};
 use favlist_core::{
-    export_favlist_blocking,
-    ExportOptions,
-    ExportProgress,
-    ExportResult,
-    ProgressCallback,
+    export_favlist_blocking, ExportOptions, ExportProgress, ExportResult, ProgressCallback,
     FIELDNAMES,
 };
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "导出B站收藏夹条目到CSV", long_about = None)]
@@ -51,18 +47,20 @@ fn main() -> Result<()> {
     println!("{}", style("解析收藏夹链接...").cyan());
 
     let progress_bar = Arc::new(ProgressBar::new_spinner());
-    progress_bar
-        .set_style(
-            ProgressStyle::with_template("{spinner:.green} {msg}")
-                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-        );
+    progress_bar.set_style(
+        ProgressStyle::with_template("{spinner:.green} {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+    );
     progress_bar.set_message("正在准备抓取收藏夹...");
     progress_bar.enable_steady_tick(Duration::from_millis(120));
 
     let callback_bar = Arc::clone(&progress_bar);
     let progress_callback: ProgressCallback = Arc::new(move |progress: ExportProgress| {
         if let Some(total) = progress.total {
-            callback_bar.set_message(format!("正在抓取收藏夹：已获取 {}/{}", progress.current, total));
+            callback_bar.set_message(format!(
+                "正在抓取收藏夹：已获取 {}/{}",
+                progress.current, total
+            ));
         } else {
             callback_bar.set_message(format!("正在抓取收藏夹：已获取 {} 条", progress.current));
         }
@@ -102,11 +100,7 @@ fn print_summary(result: &ExportResult) {
             result.processed_count,
             total
         ),
-        None => println!(
-            "{} {}",
-            style("处理条目：").cyan(),
-            result.processed_count
-        ),
+        None => println!("{} {}", style("处理条目：").cyan(), result.processed_count),
     }
 
     if result.new_entries.is_empty() {

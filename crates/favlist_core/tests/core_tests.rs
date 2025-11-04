@@ -1,8 +1,9 @@
 use std::fs;
+use std::sync::{Arc, Mutex};
 
 use favlist_core::{
     export_favlist, load_existing_bv_ids, parse_media_id, read_csv_rows, write_entries,
-    ExportOptions, VideoEntry,
+    ExportOptions, ExportProgress, ProgressCallback, VideoEntry,
 };
 use httpmock::prelude::*;
 use serde_json::json;
@@ -121,6 +122,80 @@ async fn export_favlist_writes_new_entries() -> TestResult<()> {
     assert!(second.new_entries.is_empty());
     assert_eq!(second.processed_count, 2);
     assert_eq!(second.total_count, Some(2));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn export_progress_reports_updates() -> TestResult<()> {
+    let server = MockServer::start();
+
+    let info_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/x/v3/fav/folder/info")
+            .query_param("media_id", "123456");
+        then.status(200).json_body(json!({
+            "code": 0,
+            "data": {
+                "id": 123456_i64,
+                "fid": 1,
+                "mid": 2,
+                "title": "测试收藏夹",
+                "media_count": 2
+            }
+        }));
+    });
+
+    let list_mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/x/v3/fav/resource/list")
+            .query_param("media_id", "123456")
+            .query_param("pn", "1")
+            .query_param("ps", "40")
+            .query_param("platform", "web");
+        then.status(200).json_body(json!({
+            "code": 0,
+            "data": {
+                "medias": [
+                    {"bvid": "BV1aa41117aa", "title": "视频甲"},
+                    {"bvid": "BV1bb41117bb", "title": "视频乙"}
+                ],
+                "has_more": false
+            }
+        }));
+    });
+
+    let dir = tempdir()?;
+    let csv_path = dir.path().join("fav.csv");
+    let progress_events: Arc<Mutex<Vec<ExportProgress>>> = Arc::new(Mutex::new(Vec::new()));
+    let capture = progress_events.clone();
+    let progress_handler: ProgressCallback = Arc::new(move |progress| {
+        capture.lock().unwrap().push(progress);
+    });
+
+    let options = ExportOptions {
+        fav_url: "https://space.bilibili.com/123456/favlist?fid=123456".to_string(),
+        csv_path: csv_path.clone(),
+        encoding: "utf-8".to_string(),
+        page_size: 40,
+        cookie: None,
+        timeout_secs: 10,
+        timestamp: Some("2025-11-03T00-00-00".to_string()),
+        extra_headers: Default::default(),
+        base_url: Some(server.base_url()),
+        progress_callback: Some(progress_handler),
+    };
+
+    export_favlist(options).await?;
+
+    info_mock.assert();
+    list_mock.assert();
+
+    let events = progress_events.lock().unwrap();
+    assert_eq!(events.len(), 3);
+    let currents: Vec<u64> = events.iter().map(|event| event.current).collect();
+    assert_eq!(currents, vec![0, 1, 2]);
+    assert!(events.iter().all(|event| event.total == Some(2)));
 
     Ok(())
 }

@@ -19,7 +19,7 @@ pub struct ExportProgress {
 
 pub type ProgressCallback = Arc<dyn Fn(ExportProgress) + Send + Sync + 'static>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExportOptions {
     pub fav_url: String,
     pub csv_path: PathBuf,

@@ -10,11 +10,7 @@ pub use client::{BiliFavClient, ClientOptions, DEFAULT_HEADERS};
 pub use csv_utils::{load_existing_bv_ids, read_csv_rows, write_entries, CsvRow, FIELDNAMES};
 pub use errors::{ExportError, FavlistError};
 pub use export::{
-    export_favlist,
-    export_favlist_blocking,
-    ExportOptions,
-    ExportProgress,
-    ExportResult,
+    export_favlist, export_favlist_blocking, ExportOptions, ExportProgress, ExportResult,
     ProgressCallback,
 };
 pub use inventory::{

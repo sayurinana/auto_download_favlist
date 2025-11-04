@@ -10,3 +10,4 @@ timestamp,stage,action,notes
 2025-11-03T21:14:35+08:00,流程设计,流程图生成,"编写core_export_progress与helper_bbdown_api PlantUML并生成PNG"
 2025-11-03T21:15:22+08:00,任务主体流程循环,进入环节,"开始按照设计修改核心库与各二进制crate"
 2025-11-04T18:54:13+08:00,任务主体流程循环,核心库改造,"favlist_core新增ExportProgress与回调机制，CLI接入indicatif进度条"
+2025-11-04T19:15:37+08:00,任务主体流程循环,助手API集成,"bilibili_favlist_download_helper完成配置扩展、BBDown serve API轮询与dry-run输出，cargo test/clippy通过"
