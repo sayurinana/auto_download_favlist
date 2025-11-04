@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## 2025-11-04 - 0.4.0
+- `favlist_core` 增加 `ExportProgress` 回调与累计统计，导出流程可对外发布“当前/总数”进度并在测试中验证触发顺序。
+- `get_bilibili_favlist_bvid_list` 接入 `indicatif` 与 `console`，在终端展示实时抓取进度与彩色总结信息。
+- `bilibili_favlist_download_helper` 扩展配置项（serve 地址、FilePattern、轮询间隔等），在缺漏补全阶段基于 BBDown JSON API 批量添加任务、轮询完成并支持 dry-run 与自动启动 `bbdown serve`。
+
 ## 2025-11-02 - 0.3.0
 - 引入 Rust 工作区，新增共享库 `favlist_core` 与命令行工具 `get_bilibili_favlist_bvid_list`，覆盖收藏夹抓取、CSV 编码与去重逻辑。
 - 新实现 `bilibili_favlist_download_helper` 交互式助手，菜单仅响应方向键/WASD 与 Enter/Space/Esc，并通过 crate 复用核心导出能力。
