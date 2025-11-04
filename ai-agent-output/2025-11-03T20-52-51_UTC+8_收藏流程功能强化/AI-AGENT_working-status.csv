@@ -15,3 +15,4 @@ timestamp,stage,action,notes
 2025-11-04T19:17:37+08:00,文档更新,进入环节,"更新CHANGELOG.md新增0.4.0版本记录，准备同步输出说明"
 2025-11-04T19:19:05+08:00,文档更新,完成,"同步CHANGELOG与optimized-task验证记录，准备收尾"
 2025-11-04T19:20:00+08:00,收尾,进入环节,"清理临时变更并重置now-task.md，仅保留标题"
+2025-11-04T19:20:39+08:00,收尾,完成,"交付进度回调、CLI进度条与BBDown API集成，cargo test/clippy通过，待用户部署BBDown serve 实测"
