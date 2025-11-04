@@ -4,7 +4,8 @@ mod menu;
 mod prompts;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -16,11 +17,14 @@ use favlist_core::inventory::{
 };
 use favlist_core::{
     current_timestamp, export_favlist_blocking, read_csv_rows, CsvRow, ExportOptions,
+    ExportProgress, ProgressCallback,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 
 use bbdown::{run_bbdown, start_bbdown_serve, BbdownApiClient};
-use config::{ConfigStore, FavConfig, DEFAULT_BBDOWN_URL, DEFAULT_POLL_INTERVAL_MS};
+use config::{
+    ConfigStore, FavConfig, GlobalDefaultsStore, DEFAULT_BBDOWN_URL, DEFAULT_POLL_INTERVAL_MS,
+};
 use menu::{select_from_menu, MenuOutcome};
 use prompts::{pause_with_message, prompt_input};
 
@@ -38,12 +42,17 @@ struct Cli {
 
 struct App {
     store: ConfigStore,
+    defaults: GlobalDefaultsStore,
     dry_run: bool,
 }
 
 impl App {
-    fn new(store: ConfigStore, dry_run: bool) -> Self {
-        Self { store, dry_run }
+    fn new(store: ConfigStore, defaults: GlobalDefaultsStore, dry_run: bool) -> Self {
+        Self {
+            store,
+            defaults,
+            dry_run,
+        }
     }
 
     fn run(&mut self) -> Result<()> {
@@ -52,6 +61,7 @@ impl App {
             match action {
                 MainAction::NewConfig => self.handle_new_config()?,
                 MainAction::UseConfig => self.handle_existing_configs()?,
+                MainAction::EditDefaults => self.handle_global_defaults()?,
                 MainAction::Exit => {
                     println!("已退出助手。");
                     break;
@@ -65,11 +75,13 @@ impl App {
         let options = vec![
             "录入新收藏夹".to_string(),
             "使用存档配置".to_string(),
+            "设置全局默认".to_string(),
             "退出程序".to_string(),
         ];
         match select_from_menu("请选择操作", &options)? {
             MenuOutcome::Selected(0) => Ok(MainAction::NewConfig),
             MenuOutcome::Selected(1) => Ok(MainAction::UseConfig),
+            MenuOutcome::Selected(2) => Ok(MainAction::EditDefaults),
             MenuOutcome::Selected(_) | MenuOutcome::Esc => Ok(MainAction::Exit),
         }
     }
@@ -79,21 +91,40 @@ impl App {
         println!("录入新收藏夹（留空可取消）");
 
         let fav_url = prompt_input("请输入收藏夹 URL", None)?;
-        if fav_url.is_empty() {
+        if fav_url.trim().is_empty() {
             println!("已取消录入。");
             pause_with_message("按回车返回菜单...")?;
             terminal::enable_raw_mode().ok();
             return Ok(());
         }
 
-        let default_dir = std::env::current_dir()
+        let defaults_snapshot = self.defaults.data().clone();
+        let env_dir = std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .display()
             .to_string();
-        let download_dir_input = prompt_input("请输入下载目录", Some(&default_dir))?;
-        let download_dir = PathBuf::from(&download_dir_input);
-        fs::create_dir_all(&download_dir)
-            .with_context(|| format!("创建目录失败: {}", download_dir.display()))?;
+
+        let api_prompt_default = defaults_snapshot
+            .api_download_dir
+            .as_deref()
+            .unwrap_or(&env_dir);
+        let api_download_dir = resolve_string_with_default(
+            prompt_input("BBDown 下载目录(Windows)", Some(api_prompt_default))?,
+            defaults_snapshot.api_download_dir.as_ref(),
+            api_prompt_default,
+        );
+
+        let scan_prompt_default = defaults_snapshot
+            .scan_download_dir
+            .as_deref()
+            .unwrap_or(&env_dir);
+        let scan_download_dir = resolve_string_with_default(
+            prompt_input("本地检测目录(WSL)", Some(scan_prompt_default))?,
+            defaults_snapshot.scan_download_dir.as_ref(),
+            scan_prompt_default,
+        );
+        fs::create_dir_all(PathBuf::from(&scan_download_dir))
+            .with_context(|| format!("创建目录失败: {scan_download_dir}"))?;
 
         let encoding_input = prompt_input("CSV 编码(默认 utf-8)", Some("utf-8"))?;
         let encoding = if encoding_input.trim().is_empty() {
@@ -108,21 +139,32 @@ impl App {
         let cookie = normalize_optional(prompt_input("Cookie(可留空)", None)?);
         let name = normalize_optional(prompt_input("配置名称(可留空)", None)?);
 
-        let file_pattern = normalize_optional(prompt_input(
-            "BBDown File Pattern(可留空沿用 bbdown.config)",
-            None,
-        )?);
-        let multi_file_pattern =
-            normalize_optional(prompt_input("BBDown Multi File Pattern(可留空)", None)?);
+        let file_pattern = resolve_optional_with_default(
+            prompt_input(
+                "BBDown File Pattern(可留空沿用 bbdown.config)",
+                defaults_snapshot.file_pattern.as_deref(),
+            )?,
+            defaults_snapshot.file_pattern.as_ref(),
+        );
+        let multi_file_pattern = resolve_optional_with_default(
+            prompt_input(
+                "BBDown Multi File Pattern(可留空)",
+                defaults_snapshot.multi_file_pattern.as_deref(),
+            )?,
+            defaults_snapshot.multi_file_pattern.as_ref(),
+        );
         let serve_url_input = prompt_input(
-            "BBDown serve 地址(默认 http://localhost:23333)",
-            Some(DEFAULT_BBDOWN_URL),
+            "BBDown serve 地址(留空使用默认)",
+            defaults_snapshot
+                .bbdown_serve_url
+                .as_deref()
+                .or(Some(DEFAULT_BBDOWN_URL)),
         )?;
-        let bbdown_serve_url = if serve_url_input.trim().is_empty() {
-            DEFAULT_BBDOWN_URL.to_string()
-        } else {
-            serve_url_input.trim().to_string()
-        };
+        let bbdown_serve_url = resolve_string_with_default(
+            serve_url_input,
+            defaults_snapshot.bbdown_serve_url.as_ref(),
+            DEFAULT_BBDOWN_URL,
+        );
         let auto_launch_input = prompt_input("缺漏补全时自动启动BBDown serve? (Y/n)", Some("Y"))?;
         let bbdown_auto_launch = parse_bool_input(&auto_launch_input, true);
         let launch_args_input =
@@ -142,8 +184,7 @@ impl App {
             .max(50);
 
         let timestamp = current_timestamp();
-        let csv_path = download_dir.join(format!("{timestamp}-favlist.csv"));
-        let download_dir_str = download_dir.display().to_string();
+        let csv_path = Path::new(&scan_download_dir).join(format!("{timestamp}-favlist.csv"));
 
         let options = ExportOptions {
             fav_url: fav_url.clone(),
@@ -158,17 +199,17 @@ impl App {
             progress_callback: None,
         };
 
-        println!("正在抓取收藏夹，请稍候...");
-        match export_favlist_blocking(options) {
+        match self.run_export_with_progress(options, "抓取收藏夹进度") {
             Ok(result) => {
                 println!(
                     "抓取完成，共新增 {} 条记录，输出文件：{}",
                     style(result.new_entries.len()).green(),
                     result.csv_path.display()
                 );
-                let config = FavConfig {
+                let mut config = FavConfig {
                     fav_url,
-                    download_dir: download_dir_str,
+                    api_download_dir,
+                    scan_download_dir: Some(scan_download_dir.clone()),
                     csv_path: result.csv_path.display().to_string(),
                     encoding,
                     page_size,
@@ -183,6 +224,7 @@ impl App {
                     file_pattern,
                     multi_file_pattern,
                 };
+                config.apply_defaults();
                 self.store.add(config)?;
             }
             Err(err) => {
@@ -227,6 +269,101 @@ impl App {
         Ok(())
     }
 
+    fn run_export_with_progress(
+        &self,
+        mut options: ExportOptions,
+        label: &str,
+    ) -> Result<favlist_core::ExportResult> {
+        let display_label = label.to_string();
+        let progress_bar = ProgressBar::new_spinner();
+        progress_bar.set_style(
+            ProgressStyle::with_template("{spinner:.green} {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+        );
+        progress_bar.set_message(display_label.clone());
+        progress_bar.enable_steady_tick(Duration::from_millis(120));
+        let spinner = progress_bar.clone();
+        let label_clone = display_label.clone();
+        options.progress_callback = Some(Arc::new(move |progress: ExportProgress| {
+            if let Some(total) = progress.total {
+                spinner.set_message(format!(
+                    "{}：已获取 {}/{}",
+                    label_clone, progress.current, total
+                ));
+            } else {
+                spinner.set_message(format!("{}：已获取 {} 条", label_clone, progress.current));
+            }
+        }) as ProgressCallback);
+        let result = export_favlist_blocking(options).map_err(|err| err.into());
+        progress_bar.finish_and_clear();
+        result
+    }
+
+    fn handle_global_defaults(&mut self) -> Result<()> {
+        terminal::disable_raw_mode().ok();
+        println!("设置全局默认（留空保留原值，输入 '-' 清除）");
+
+        let snapshot = self.defaults.data().clone();
+        let api_input = prompt_input(
+            "默认 BBDown 下载目录(Windows)",
+            snapshot.api_download_dir.as_deref(),
+        )?;
+        let scan_input = prompt_input(
+            "默认 本地检测目录(WSL)",
+            snapshot.scan_download_dir.as_deref(),
+        )?;
+        let serve_input = prompt_input(
+            "默认 BBDown serve 地址",
+            snapshot
+                .bbdown_serve_url
+                .as_deref()
+                .or(Some(DEFAULT_BBDOWN_URL)),
+        )?;
+        let file_pattern_input =
+            prompt_input("默认 File Pattern", snapshot.file_pattern.as_deref())?;
+        let multi_file_pattern_input = prompt_input(
+            "默认 Multi File Pattern",
+            snapshot.multi_file_pattern.as_deref(),
+        )?;
+
+        {
+            let data = self.defaults.data_mut();
+            data.api_download_dir = match api_input.trim() {
+                "" => snapshot.api_download_dir,
+                "-" => None,
+                other => Some(other.to_string()),
+            };
+            data.scan_download_dir = match scan_input.trim() {
+                "" => snapshot.scan_download_dir,
+                "-" => None,
+                other => Some(other.to_string()),
+            };
+            data.bbdown_serve_url = match serve_input.trim() {
+                "" => snapshot
+                    .bbdown_serve_url
+                    .or_else(|| Some(DEFAULT_BBDOWN_URL.to_string())),
+                "-" => None,
+                other => Some(other.to_string()),
+            };
+            data.file_pattern = match file_pattern_input.trim() {
+                "" => snapshot.file_pattern,
+                "-" => None,
+                other => Some(other.to_string()),
+            };
+            data.multi_file_pattern = match multi_file_pattern_input.trim() {
+                "" => snapshot.multi_file_pattern,
+                "-" => None,
+                other => Some(other.to_string()),
+            };
+        }
+
+        self.defaults.save()?;
+        println!("{}", style("全局默认已更新。").green());
+        pause_with_message("按回车返回菜单...")?;
+        terminal::enable_raw_mode().ok();
+        Ok(())
+    }
+
     fn handle_config_actions(&mut self, index: usize) -> Result<()> {
         loop {
             let options = vec![
@@ -250,11 +387,16 @@ impl App {
         terminal::disable_raw_mode().ok();
         println!("编辑配置（留空保持原值，输入 '-' 删除可选字段）");
 
-        let download_dir = prompt_input("下载目录", Some(&config.download_dir))?;
+        let download_dir = prompt_input("下载目录(Windows)", Some(&config.api_download_dir))?;
         if !download_dir.is_empty() {
-            fs::create_dir_all(&download_dir)
-                .with_context(|| format!("创建目录失败: {download_dir}"))?;
-            config.download_dir = download_dir;
+            config.api_download_dir = download_dir;
+        }
+
+        let scan_dir = prompt_input("本地检测目录(WSL)", config.scan_download_dir.as_deref())?;
+        if !scan_dir.is_empty() {
+            fs::create_dir_all(Path::new(&scan_dir))
+                .with_context(|| format!("创建目录失败: {scan_dir}"))?;
+            config.scan_download_dir = Some(scan_dir);
         }
 
         let fav_url = prompt_input("收藏夹 URL", Some(&config.fav_url))?;
@@ -379,7 +521,7 @@ impl App {
 
         let timestamp = current_timestamp();
         let new_csv_path = config
-            .download_dir_path()
+            .scan_download_dir_path()
             .join(format!("{timestamp}-favlist.csv"));
 
         let options = ExportOptions {
@@ -403,7 +545,7 @@ impl App {
                     println!("未发现新增条目。");
                 } else {
                     println!("发现 {} 个新增条目：", diffs.len());
-                    let download_dir = config.download_dir_path();
+                    let download_dir = config.scan_download_dir_path();
                     fs::create_dir_all(&download_dir)?;
                     let mut count = 0;
                     for row in diffs {
@@ -439,7 +581,7 @@ impl App {
         terminal::disable_raw_mode().ok();
         println!("检查缺漏...");
 
-        let download_dir = config.download_dir_path();
+        let download_dir = config.scan_download_dir_path();
         if !download_dir.exists() {
             println!("下载目录不存在: {}", download_dir.display());
             pause_with_message("按回车返回...")?;
@@ -635,15 +777,41 @@ fn parse_args(input: &str) -> Vec<String> {
         .collect()
 }
 
+fn resolve_string_with_default(
+    input: String,
+    preferred: Option<&String>,
+    fallback: &str,
+) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        preferred.cloned().unwrap_or_else(|| fallback.to_string())
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn resolve_optional_with_default(input: String, preferred: Option<&String>) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        preferred.cloned()
+    } else if trimmed == "-" {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 enum MainAction {
     NewConfig,
     UseConfig,
+    EditDefaults,
     Exit,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let store = ConfigStore::load(cli.config_path.clone())?;
-    let mut app = App::new(store, cli.dry_run);
+    let defaults = GlobalDefaultsStore::load(&store.config_dir())?;
+    let mut app = App::new(store, defaults, cli.dry_run);
     app.run()
 }

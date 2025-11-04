@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 const APP_DIR: &str = "bilibili_favlist_helper";
 const CONFIG_NAME: &str = "config.json";
+const DEFAULTS_NAME: &str = "defaults.json";
 pub const DEFAULT_BBDOWN_URL: &str = "http://localhost:23333";
 pub const DEFAULT_POLL_INTERVAL_MS: u64 = 500;
 
@@ -26,7 +27,10 @@ fn default_poll_interval() -> u64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FavConfig {
     pub fav_url: String,
-    pub download_dir: String,
+    #[serde(rename = "download_dir")]
+    pub api_download_dir: String,
+    #[serde(default)]
+    pub scan_download_dir: Option<String>,
     pub csv_path: String,
     pub encoding: String,
     pub page_size: u32,
@@ -49,8 +53,8 @@ pub struct FavConfig {
 }
 
 impl FavConfig {
-    pub fn download_dir_path(&self) -> PathBuf {
-        PathBuf::from(&self.download_dir)
+    pub fn scan_download_dir_path(&self) -> PathBuf {
+        PathBuf::from(self.scan_download_dir())
     }
 
     pub fn csv_path(&self) -> PathBuf {
@@ -64,6 +68,14 @@ impl FavConfig {
         if self.bbdown_poll_interval_ms == 0 {
             self.bbdown_poll_interval_ms = DEFAULT_POLL_INTERVAL_MS;
         }
+        if self.scan_download_dir.as_deref().unwrap_or("").is_empty() {
+            let fallback = Path::new(&self.csv_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| self.api_download_dir.clone());
+            self.scan_download_dir = Some(fallback);
+        }
     }
 
     pub fn effective_serve_url(&self) -> &str {
@@ -73,17 +85,23 @@ impl FavConfig {
     pub fn resolve_file_pattern(&self) -> Option<String> {
         self.file_pattern
             .as_ref()
-            .map(|pattern| join_download_path(&self.download_dir, pattern))
+            .map(|pattern| join_download_path(&self.api_download_dir, pattern))
     }
 
     pub fn resolve_multi_file_pattern(&self) -> Option<String> {
         self.multi_file_pattern
             .as_ref()
-            .map(|pattern| join_download_path(&self.download_dir, pattern))
+            .map(|pattern| join_download_path(&self.api_download_dir, pattern))
     }
 
     pub fn poll_interval(&self) -> Duration {
         Duration::from_millis(self.bbdown_poll_interval_ms.max(50))
+    }
+
+    pub fn scan_download_dir(&self) -> &str {
+        self.scan_download_dir
+            .as_deref()
+            .unwrap_or(&self.api_download_dir)
     }
 }
 
@@ -135,6 +153,13 @@ impl ConfigStore {
         self.configs[index] = config;
         self.save()
     }
+
+    pub fn config_dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
 }
 
 fn default_config_path() -> PathBuf {
@@ -148,4 +173,52 @@ fn join_download_path(base: &str, pattern: &str) -> String {
     let mut path = Path::new(base).to_path_buf();
     path.push(pattern);
     path.to_string_lossy().to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GlobalDefaults {
+    pub api_download_dir: Option<String>,
+    pub scan_download_dir: Option<String>,
+    pub bbdown_serve_url: Option<String>,
+    pub file_pattern: Option<String>,
+    pub multi_file_pattern: Option<String>,
+}
+
+impl GlobalDefaults {}
+
+pub struct GlobalDefaultsStore {
+    path: PathBuf,
+    data: GlobalDefaults,
+}
+
+impl GlobalDefaultsStore {
+    pub fn load(config_dir: &Path) -> Result<Self> {
+        let path = config_dir.join(DEFAULTS_NAME);
+        let data = if path.exists() {
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("读取全局默认失败: {}", path.display()))?;
+            serde_json::from_str(&content).with_context(|| "解析全局默认失败")?
+        } else {
+            GlobalDefaults::default()
+        };
+        Ok(Self { path, data })
+    }
+
+    pub fn data(&self) -> &GlobalDefaults {
+        &self.data
+    }
+
+    pub fn data_mut(&mut self) -> &mut GlobalDefaults {
+        &mut self.data
+    }
+
+    pub fn save(&self) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("创建全局默认目录失败: {}", parent.display()))?;
+        }
+        let json = serde_json::to_string_pretty(&self.data)?;
+        fs::write(&self.path, json).with_context(|| "写入全局默认失败")?;
+        Ok(())
+    }
 }
