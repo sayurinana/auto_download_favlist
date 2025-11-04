@@ -9,7 +9,14 @@ pub mod timestamp;
 pub use client::{BiliFavClient, ClientOptions, DEFAULT_HEADERS};
 pub use csv_utils::{load_existing_bv_ids, read_csv_rows, write_entries, CsvRow, FIELDNAMES};
 pub use errors::{ExportError, FavlistError};
-pub use export::{export_favlist, export_favlist_blocking, ExportOptions, ExportResult};
+pub use export::{
+    export_favlist,
+    export_favlist_blocking,
+    ExportOptions,
+    ExportProgress,
+    ExportResult,
+    ProgressCallback,
+};
 pub use inventory::{
     diff_new_entries, extract_bvids, find_missing_videos, scan_directory_bvids,
     write_inventory_file,

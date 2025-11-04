@@ -100,11 +100,14 @@ async fn export_favlist_writes_new_entries() -> TestResult<()> {
         timestamp: Some("2025-11-02T12-00-00".to_string()),
         extra_headers: Default::default(),
         base_url: Some(server.base_url()),
+        progress_callback: None,
     };
 
     let result = export_favlist(options.clone()).await?;
     assert_eq!(result.new_entries.len(), 2);
     assert_eq!(result.folder_info.title, "示例收藏夹");
+    assert_eq!(result.processed_count, 2);
+    assert_eq!(result.total_count, Some(2));
 
     let content = fs::read_to_string(&csv_path)?;
     assert!(content.contains("BV1xx41117xb"));
@@ -116,6 +119,8 @@ async fn export_favlist_writes_new_entries() -> TestResult<()> {
     // Re-run export to ensure duplicates are skipped
     let second = export_favlist(options).await?;
     assert!(second.new_entries.is_empty());
+    assert_eq!(second.processed_count, 2);
+    assert_eq!(second.total_count, Some(2));
 
     Ok(())
 }

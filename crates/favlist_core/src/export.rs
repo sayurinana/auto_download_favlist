@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::runtime::Builder;
@@ -9,6 +10,14 @@ use crate::csv_utils::{load_existing_bv_ids, write_entries};
 use crate::errors::{ExportError, FavlistError};
 use crate::models::{FolderInfo, VideoEntry, VideoItem};
 use crate::timestamp::{current_timestamp, parse_media_id};
+
+#[derive(Debug, Clone)]
+pub struct ExportProgress {
+    pub current: u64,
+    pub total: Option<u64>,
+}
+
+pub type ProgressCallback = Arc<dyn Fn(ExportProgress) + Send + Sync + 'static>;
 
 #[derive(Debug, Clone)]
 pub struct ExportOptions {
@@ -21,6 +30,7 @@ pub struct ExportOptions {
     pub timestamp: Option<String>,
     pub extra_headers: HashMap<String, String>,
     pub base_url: Option<String>,
+    pub progress_callback: Option<ProgressCallback>,
 }
 
 impl Default for ExportOptions {
@@ -35,6 +45,7 @@ impl Default for ExportOptions {
             timestamp: None,
             extra_headers: HashMap::new(),
             base_url: None,
+            progress_callback: None,
         }
     }
 }
@@ -45,6 +56,8 @@ pub struct ExportResult {
     pub folder_info: FolderInfo,
     pub new_entries: Vec<VideoEntry>,
     pub timestamp: String,
+    pub processed_count: u64,
+    pub total_count: Option<u64>,
 }
 
 pub async fn export_favlist(mut options: ExportOptions) -> Result<ExportResult, ExportError> {
@@ -52,6 +65,7 @@ pub async fn export_favlist(mut options: ExportOptions) -> Result<ExportResult, 
     let csv_path = options.csv_path.clone();
     let encoding = options.encoding.clone();
     let timestamp = options.timestamp.take().unwrap_or_else(current_timestamp);
+    let progress_callback = options.progress_callback.clone();
 
     let client_options = ClientOptions {
         timeout: Duration::from_secs(options.timeout_secs),
@@ -65,6 +79,11 @@ pub async fn export_favlist(mut options: ExportOptions) -> Result<ExportResult, 
         .get_folder_info(media_id)
         .await
         .map_err(ExportError::from)?;
+    let total_count = if folder_info.media_count > 0 {
+        Some(folder_info.media_count as u64)
+    } else {
+        None
+    };
     let page_payloads = client
         .list_videos(media_id, options.page_size)
         .await
@@ -73,8 +92,24 @@ pub async fn export_favlist(mut options: ExportOptions) -> Result<ExportResult, 
     let mut existing_ids = load_existing_bv_ids(&csv_path, &encoding).map_err(ExportError::from)?;
 
     let mut new_entries = Vec::new();
+    let mut processed_count: u64 = 0;
+    if let Some(callback) = progress_callback.as_ref() {
+        callback(ExportProgress {
+            current: processed_count,
+            total: total_count,
+        });
+    }
+
     for page in page_payloads {
         for item in page.medias {
+            processed_count = processed_count.saturating_add(1);
+            if let Some(callback) = progress_callback.as_ref() {
+                callback(ExportProgress {
+                    current: processed_count,
+                    total: total_count,
+                });
+            }
+
             if let Some(entry) = build_video_entry(&item, &folder_info.title, &timestamp) {
                 if existing_ids.insert(entry.bv_id.clone()) {
                     new_entries.push(entry);
@@ -94,6 +129,8 @@ pub async fn export_favlist(mut options: ExportOptions) -> Result<ExportResult, 
         folder_info,
         new_entries,
         timestamp,
+        processed_count,
+        total_count,
     })
 }
 
