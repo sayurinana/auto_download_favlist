@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- 调整助手支持全局默认配置、Windows/WSL 路径分离与进度条展示。
+- 改进 BBDown serve 启动方式（Windows 启动独立窗口）与任务轮询逻辑。
+- CLI `get_bilibili_favlist_bvid_list` 的进度条在真实抓取时可显示已获取/总数。
 ## 2025-11-04 - 0.4.0
 - `favlist_core` 增加 `ExportProgress` 回调与累计统计，导出流程可对外发布“当前/总数”进度并在测试中验证触发顺序。
 - `get_bilibili_favlist_bvid_list` 接入 `indicatif` 与 `console`，在终端展示实时抓取进度与彩色总结信息。
