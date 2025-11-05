@@ -537,7 +537,7 @@ impl App {
             progress_callback: None,
         };
 
-        match export_favlist_blocking(options) {
+        match self.run_export_with_progress(options, "检查更新进度") {
             Ok(result) => {
                 let new_rows = read_csv_rows(&new_csv_path, &config.encoding)?;
                 let diffs = diff_new_entries(&old_rows, &new_rows);
@@ -687,7 +687,7 @@ impl App {
                 );
                 progress_bar.enable_steady_tick(Duration::from_millis(120));
                 let spinner = progress_bar.clone();
-                api.wait_until_idle(config.poll_interval(), move |running| {
+                api.wait_until_idle(config.poll_interval(), &missing_bvids, move |running| {
                     if let Some(task) = running.first() {
                         let title = task.title.as_deref().unwrap_or("未命名任务");
                         spinner.set_message(format!(

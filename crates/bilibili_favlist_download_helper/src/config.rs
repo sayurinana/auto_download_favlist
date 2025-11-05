@@ -170,9 +170,20 @@ fn default_config_path() -> PathBuf {
 }
 
 fn join_download_path(base: &str, pattern: &str) -> String {
-    let mut path = Path::new(base).to_path_buf();
-    path.push(pattern);
-    path.to_string_lossy().to_string()
+    if base.contains(':') {
+        let mut sanitized = base.trim_end_matches(['\\', '/']).to_string();
+        if sanitized.is_empty() {
+            pattern.to_string()
+        } else {
+            sanitized.push('\\');
+            sanitized.push_str(pattern);
+            sanitized
+        }
+    } else {
+        let mut path = Path::new(base).to_path_buf();
+        path.push(pattern);
+        path.to_string_lossy().to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
