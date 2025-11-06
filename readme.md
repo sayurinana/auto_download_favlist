@@ -1,3 +1,7 @@
+感谢[nilaoda](https://github.com/nilaoda)及其一系列开源贡献者的[BBDown](https://github.com/nilaoda/BBDown)
+
+制作此工具是因为bbdown在下载收藏夹时常常无法正常下载
+
 # auto_download_favlist
 
 B 站收藏夹批量导出与下载辅助工具。项目已基于 Rust 重构核心抓取逻辑，并提供共享 crate 与两个命令行程序；原有 Python 实现仍保留，便于对照历史行为。
