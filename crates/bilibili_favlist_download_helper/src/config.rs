@@ -27,10 +27,16 @@ fn default_poll_interval() -> u64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FavConfig {
     pub fav_url: String,
-    #[serde(rename = "download_dir")]
+    #[serde(rename = "download_dir", skip_serializing)]
+    pub legacy_download_dir: Option<String>,
+    #[serde(default)]
     pub api_download_dir: String,
     #[serde(default)]
     pub scan_download_dir: Option<String>,
+    #[serde(default)]
+    pub bbdown_work_dir: Option<String>,
+    #[serde(default)]
+    pub bbdown_max_concurrency: Option<u32>,
     pub csv_path: String,
     pub encoding: String,
     pub page_size: u32,
@@ -68,6 +74,13 @@ impl FavConfig {
         if self.bbdown_poll_interval_ms == 0 {
             self.bbdown_poll_interval_ms = DEFAULT_POLL_INTERVAL_MS;
         }
+        if self.api_download_dir.trim().is_empty() {
+            if let Some(legacy) = &self.legacy_download_dir {
+                self.api_download_dir = legacy.clone();
+            } else {
+                self.api_download_dir = ".".to_string();
+            }
+        }
         if self.scan_download_dir.as_deref().unwrap_or("").is_empty() {
             let fallback = Path::new(&self.csv_path)
                 .parent()
@@ -75,6 +88,11 @@ impl FavConfig {
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| self.api_download_dir.clone());
             self.scan_download_dir = Some(fallback);
+        }
+        if let Some(value) = self.bbdown_max_concurrency {
+            if value == 0 {
+                self.bbdown_max_concurrency = Some(2);
+            }
         }
     }
 
@@ -102,6 +120,20 @@ impl FavConfig {
         self.scan_download_dir
             .as_deref()
             .unwrap_or(&self.api_download_dir)
+    }
+
+    pub fn max_concurrency(&self, defaults: &GlobalDefaults) -> u32 {
+        self.bbdown_max_concurrency
+            .or(defaults.bbdown_max_concurrency)
+            .unwrap_or(2)
+            .max(1)
+    }
+
+    pub fn resolve_work_dir(&self, defaults: &GlobalDefaults) -> Option<PathBuf> {
+        self.bbdown_work_dir
+            .as_ref()
+            .map(PathBuf::from)
+            .or_else(|| defaults.bbdown_work_dir.as_ref().map(PathBuf::from))
     }
 }
 
@@ -191,11 +223,11 @@ pub struct GlobalDefaults {
     pub api_download_dir: Option<String>,
     pub scan_download_dir: Option<String>,
     pub bbdown_serve_url: Option<String>,
+    pub bbdown_work_dir: Option<String>,
+    pub bbdown_max_concurrency: Option<u32>,
     pub file_pattern: Option<String>,
     pub multi_file_pattern: Option<String>,
 }
-
-impl GlobalDefaults {}
 
 pub struct GlobalDefaultsStore {
     path: PathBuf,

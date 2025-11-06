@@ -3,9 +3,11 @@ mod config;
 mod menu;
 mod prompts;
 
+use std::collections::{HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -153,6 +155,25 @@ impl App {
             )?,
             defaults_snapshot.multi_file_pattern.as_ref(),
         );
+        let work_dir_hint = defaults_snapshot
+            .bbdown_work_dir
+            .as_deref()
+            .unwrap_or("未设置");
+        let work_dir_prompt =
+            format!("BBDown 工作目录(Windows，留空沿用全局默认：{work_dir_hint}，输入 '-' 清除)",);
+        let work_dir_input = prompt_input(&work_dir_prompt, None)?;
+        let bbdown_work_dir = match work_dir_input.trim() {
+            "" | "-" => None,
+            other => Some(other.to_string()),
+        };
+        let concurrency_hint = defaults_snapshot
+            .bbdown_max_concurrency
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "2".to_string());
+        let concurrency_prompt =
+            format!("下载任务并发数量(>=1，留空沿用全局默认：{concurrency_hint}，输入 '-' 清除)",);
+        let concurrency_input = prompt_input(&concurrency_prompt, None)?;
+        let bbdown_max_concurrency = parse_concurrency_input(&concurrency_input, None);
         let serve_url_input = prompt_input(
             "BBDown serve 地址(留空使用默认)",
             defaults_snapshot
@@ -208,8 +229,11 @@ impl App {
                 );
                 let mut config = FavConfig {
                     fav_url,
+                    legacy_download_dir: None,
                     api_download_dir,
                     scan_download_dir: Some(scan_download_dir.clone()),
+                    bbdown_work_dir,
+                    bbdown_max_concurrency,
                     csv_path: result.csv_path.display().to_string(),
                     encoding,
                     page_size,
@@ -325,6 +349,11 @@ impl App {
             "默认 Multi File Pattern",
             snapshot.multi_file_pattern.as_deref(),
         )?;
+        let work_dir_input =
+            prompt_input("默认 BBDown 工作目录", snapshot.bbdown_work_dir.as_deref())?;
+        let concurrency_prompt = snapshot.bbdown_max_concurrency.map(|v| v.to_string());
+        let concurrency_input =
+            prompt_input("默认下载任务并发数量(>=1)", concurrency_prompt.as_deref())?;
 
         {
             let data = self.defaults.data_mut();
@@ -355,6 +384,13 @@ impl App {
                 "-" => None,
                 other => Some(other.to_string()),
             };
+            data.bbdown_work_dir = match work_dir_input.trim() {
+                "" => snapshot.bbdown_work_dir,
+                "-" => None,
+                other => Some(other.to_string()),
+            };
+            data.bbdown_max_concurrency =
+                parse_concurrency_input(&concurrency_input, snapshot.bbdown_max_concurrency);
         }
 
         self.defaults.save()?;
@@ -496,6 +532,22 @@ impl App {
         } else if !multi_file_pattern.trim().is_empty() {
             config.multi_file_pattern = Some(multi_file_pattern.trim().to_string());
         }
+        let work_dir_input = prompt_input(
+            "BBDown 工作目录 (- 表示清除)",
+            config.bbdown_work_dir.as_deref(),
+        )?;
+        if work_dir_input == "-" {
+            config.bbdown_work_dir = None;
+        } else if !work_dir_input.trim().is_empty() {
+            config.bbdown_work_dir = Some(work_dir_input.trim().to_string());
+        }
+        let concurrency_prompt = config.bbdown_max_concurrency.map(|v| v.to_string());
+        let concurrency_input = prompt_input(
+            "下载任务并发数量 (- 表示清除)",
+            concurrency_prompt.as_deref(),
+        )?;
+        config.bbdown_max_concurrency =
+            parse_concurrency_input(&concurrency_input, config.bbdown_max_concurrency);
 
         self.store.update(index, config)?;
 
@@ -547,11 +599,14 @@ impl App {
                     println!("发现 {} 个新增条目：", diffs.len());
                     let download_dir = config.scan_download_dir_path();
                     fs::create_dir_all(&download_dir)?;
+                    let work_dir = config
+                        .resolve_work_dir(self.defaults.data())
+                        .unwrap_or_else(|| download_dir.clone());
                     let mut count = 0;
                     for row in diffs {
                         if let Some(bvid) = extract_bvid(&row) {
                             println!("下载 {}", bvid);
-                            if let Err(err) = run_bbdown(&bvid, &download_dir, self.dry_run) {
+                            if let Err(err) = run_bbdown(&bvid, &work_dir, self.dry_run) {
                                 println!("bbdown 失败: {err}");
                             }
                             count += 1;
@@ -652,7 +707,10 @@ impl App {
             } else {
                 let mut serve_process = None;
                 if config.bbdown_auto_launch {
-                    match start_bbdown_serve(&config.bbdown_launch_args) {
+                    let work_dir = config
+                        .resolve_work_dir(self.defaults.data())
+                        .unwrap_or_else(|| config.scan_download_dir_path());
+                    match start_bbdown_serve(&config.bbdown_launch_args, Some(work_dir.as_path())) {
                         Ok(process) => {
                             println!("{}", style("已启动 bbdown serve 子进程。").green());
                             serve_process = Some(process);
@@ -675,10 +733,71 @@ impl App {
                 }
 
                 let api = BbdownApiClient::new(&serve_url, Duration::from_secs(30))?;
-                for bvid in &missing_bvids {
-                    api.add_task(bvid, file_pattern.as_deref(), multi_file_pattern.as_deref())
-                        .with_context(|| format!("提交下载任务 {bvid} 失败"))?;
+                let max_concurrency = config.max_concurrency(self.defaults.data());
+                let poll_interval = config.poll_interval();
+                let wait_timeout = Duration::from_secs(config.timeout_secs.max(600));
+                let mut pending_queue: VecDeque<String> = missing_bvids.iter().cloned().collect();
+                let target_keys: HashSet<String> = missing_bvids
+                    .iter()
+                    .map(|value| normalize_target_key(value))
+                    .collect();
+                let mut submitted_total = 0usize;
+                let assign_spinner = ProgressBar::new_spinner();
+                assign_spinner.set_style(
+                    ProgressStyle::with_template("{spinner:.green} {msg}")
+                        .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+                );
+                assign_spinner.enable_steady_tick(Duration::from_millis(120));
+                while !pending_queue.is_empty() {
+                    let running = api.get_running()?;
+                    let active_mine = running
+                        .iter()
+                        .filter_map(|task| task.target_key())
+                        .filter(|key| target_keys.contains(key))
+                        .count() as u32;
+
+                    if active_mine >= max_concurrency {
+                        assign_spinner.set_message(format!(
+                            "达到并发上限 {}，当前运行 {} 个任务，待提交 {} 个",
+                            max_concurrency,
+                            active_mine,
+                            pending_queue.len()
+                        ));
+                        thread::sleep(poll_interval);
+                        continue;
+                    }
+
+                    let available_slots = (max_concurrency - active_mine) as usize;
+                    let mut batch_submitted = 0usize;
+                    for _ in 0..available_slots {
+                        if let Some(bvid) = pending_queue.pop_front() {
+                            api.add_task(
+                                &bvid,
+                                file_pattern.as_deref(),
+                                multi_file_pattern.as_deref(),
+                            )
+                            .with_context(|| format!("提交下载任务 {bvid} 失败"))?;
+                            batch_submitted += 1;
+                            submitted_total += 1;
+                            assign_spinner.set_message(format!(
+                                "已提交 {}/{}，当前运行 {} 个任务，队列剩余 {} 个",
+                                submitted_total,
+                                missing_bvids.len(),
+                                active_mine + batch_submitted as u32,
+                                pending_queue.len()
+                            ));
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if batch_submitted == 0 {
+                        thread::sleep(poll_interval);
+                    } else {
+                        thread::sleep(Duration::from_millis(200));
+                    }
                 }
+                assign_spinner.finish_with_message("全部待提交任务已推送至 bbdown serve");
 
                 let progress_bar = ProgressBar::new_spinner();
                 progress_bar.set_style(
@@ -687,19 +806,28 @@ impl App {
                 );
                 progress_bar.enable_steady_tick(Duration::from_millis(120));
                 let spinner = progress_bar.clone();
-                api.wait_until_idle(config.poll_interval(), &missing_bvids, move |running| {
-                    if let Some(task) = running.first() {
-                        let title = task.title.as_deref().unwrap_or("未命名任务");
-                        spinner.set_message(format!(
-                            "等待下载完成，剩余 {} 个任务（{}）",
-                            running.len(),
-                            title
-                        ));
-                    } else {
-                        spinner.set_message("等待下载任务完成...");
-                    }
-                })?;
-                progress_bar.finish_with_message("下载任务已全部完成");
+                api.wait_until_idle(
+                    config.poll_interval(),
+                    wait_timeout,
+                    &missing_bvids,
+                    move |running, pending| {
+                        if let Some(task) = running.first() {
+                            let title = task.title.as_deref().unwrap_or("未命名任务");
+                            spinner.set_message(format!(
+                                "等待下载完成，运行中 {} 个，剩余待确认 {} 个（{}）",
+                                running.len(),
+                                pending,
+                                title
+                            ));
+                        } else {
+                            spinner.set_message(format!(
+                                "等待下载任务完成，剩余待确认 {} 个目标",
+                                pending
+                            ));
+                        }
+                    },
+                )?;
+                progress_bar.finish_with_message("全部任务已完成");
 
                 if let Err(err) = api.remove_finished() {
                     println!("移除已完成任务时出现问题：{err}");
@@ -777,6 +905,10 @@ fn parse_args(input: &str) -> Vec<String> {
         .collect()
 }
 
+fn normalize_target_key(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
 fn resolve_string_with_default(
     input: String,
     preferred: Option<&String>,
@@ -798,6 +930,21 @@ fn resolve_optional_with_default(input: String, preferred: Option<&String>) -> O
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn parse_concurrency_input(input: &str, current: Option<u32>) -> Option<u32> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        current
+    } else if trimmed == "-" {
+        None
+    } else {
+        trimmed
+            .parse::<u32>()
+            .ok()
+            .map(|value| value.max(1))
+            .or(current)
     }
 }
 

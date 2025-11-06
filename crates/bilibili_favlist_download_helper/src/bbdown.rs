@@ -20,12 +20,10 @@ pub fn run_bbdown(bvid: &str, work_dir: &Path, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    let status = Command::new("bbdown")
-        .arg(bvid)
-        .arg("--work-dir")
-        .arg(work_dir)
-        .status()
-        .with_context(|| "执行 bbdown 失败")?;
+    let mut command = Command::new("bbdown");
+    command.arg(bvid).arg("--work-dir").arg(work_dir);
+    command.current_dir(work_dir);
+    let status = command.status().with_context(|| "执行 bbdown 失败")?;
 
     if !status.success() {
         let code = status.code().unwrap_or(-1);
@@ -77,19 +75,22 @@ impl Drop for ServeProcess {
     }
 }
 
-pub fn start_bbdown_serve(args: &[String]) -> Result<ServeProcess> {
+pub fn start_bbdown_serve(args: &[String], work_dir: Option<&Path>) -> Result<ServeProcess> {
     if should_launch_windows_detached() {
-        start_windows_bbdown_serve(args)
+        start_windows_bbdown_serve(args, work_dir)
     } else {
-        start_native_bbdown_serve(args)
+        start_native_bbdown_serve(args, work_dir)
     }
 }
 
-fn start_native_bbdown_serve(args: &[String]) -> Result<ServeProcess> {
+fn start_native_bbdown_serve(args: &[String], work_dir: Option<&Path>) -> Result<ServeProcess> {
     let mut command = Command::new("bbdown");
     command.arg("serve");
     for arg in args {
         command.arg(arg);
+    }
+    if let Some(dir) = work_dir {
+        command.current_dir(dir);
     }
     let child = command
         .stdout(Stdio::null())
@@ -102,7 +103,7 @@ fn start_native_bbdown_serve(args: &[String]) -> Result<ServeProcess> {
     })
 }
 
-fn start_windows_bbdown_serve(args: &[String]) -> Result<ServeProcess> {
+fn start_windows_bbdown_serve(args: &[String], work_dir: Option<&Path>) -> Result<ServeProcess> {
     let mut full_args = Vec::with_capacity(args.len() + 1);
     full_args.push("serve".to_string());
     full_args.extend(args.iter().cloned());
@@ -111,8 +112,11 @@ fn start_windows_bbdown_serve(args: &[String]) -> Result<ServeProcess> {
         .map(|arg| arg.replace('\'', "''"))
         .collect::<Vec<_>>()
         .join(" ");
+    let work_dir_arg = work_dir
+        .map(|dir| format!("-WorkingDirectory '{}'", dir.display()))
+        .unwrap_or_default();
     let ps_command = format!(
-        "$proc = Start-Process -FilePath 'bbdown' -ArgumentList '{}' -WindowStyle Normal -PassThru; Write-Output $proc.Id",
+        "$proc = Start-Process -FilePath 'bbdown' -ArgumentList '{}' {work_dir_arg} -WindowStyle Normal -PassThru; Write-Output $proc.Id",
         escaped
     );
     let output = Command::new("powershell.exe")
@@ -213,16 +217,21 @@ impl BbdownApiClient {
     pub fn wait_until_idle<F>(
         &self,
         poll: Duration,
+        timeout: Duration,
         targets: &[String],
         mut on_tick: F,
     ) -> Result<()>
     where
-        F: FnMut(&[DownloadTask]),
+        F: FnMut(&[DownloadTask], usize),
     {
         let mut pending: HashSet<String> = targets.iter().map(|t| normalize_target(t)).collect();
         let mut stable_empty = 0usize;
         let mut last_change = Instant::now();
-        let timeout = Duration::from_secs(600);
+        let timeout = if timeout.is_zero() {
+            Duration::from_secs(60)
+        } else {
+            timeout
+        };
         loop {
             let running = self.get_running()?;
             let mut target_still_running = false;
@@ -234,7 +243,7 @@ impl BbdownApiClient {
                     }
                 }
             }
-            on_tick(&running);
+            on_tick(&running, pending.len());
 
             if !pending.is_empty() {
                 let finished = self.get_finished()?;
@@ -257,7 +266,10 @@ impl BbdownApiClient {
             }
 
             if last_change.elapsed() > timeout {
-                return Err(anyhow!("等待下载任务超时, 请确认 bbdown serve 状态"));
+                return Err(anyhow!(
+                    "等待下载任务超时 (剩余 {} 个目标)，请确认 bbdown serve 状态",
+                    pending.len()
+                ));
             }
 
             if !target_still_running && pending.is_empty() && running.is_empty() {
@@ -291,7 +303,7 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    fn target_key(&self) -> Option<String> {
+    pub fn target_key(&self) -> Option<String> {
         self.url
             .as_ref()
             .map(|value| normalize_target(value))
